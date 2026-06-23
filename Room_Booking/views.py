@@ -1,112 +1,143 @@
-from rest_framework.generics import (
-    ListAPIView, CreateAPIView, RetrieveAPIView
-)
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework.exceptions import AuthenticationFailed, PermissionDenied
-from rest_framework.permissions import IsAuthenticated
-from django.contrib.auth import authenticate
+from rest_framework.decorators import api_view
+from rest_framework.reverse import reverse
+from rest_framework import mixins,generics
+from rest_framework import permissions
 from rest_framework.authtoken.models import Token
 
-from .models import Room, RoomImage, OccupyDate, User
-from .serializers import RoomSerializer,RoomImageSerializers,OccupySerializers,userSerializers
+from .models import User
+from django.contrib.auth import authenticate
+from rest_framework.exceptions import AuthenticationFailed,PermissionDenied
+
+from .models import Room,OccupiedDate
+from .serializers import RoomSerializer,OccupiedDateSerializer,UserSerializer
+from .permissions import IsAdminOrReadOnly, IsOwnerOrReadOnly
+# Create your views here.
+
+
+@api_view(['GET'])
+def api_root(request, format=None):
+    return Response({
+        'rooms': reverse('room-list', request=request, format=format),
+        'users': reverse('user-list', request=request, format=format),
+        'occupied-dates': reverse('occupieddate-list', request=request, format=format)
+    })
 
 
 
-# ------------------ ROOM APIs ------------------
-
-class RoomList(ListAPIView):
+class RoomList(generics.ListCreateAPIView):
     queryset = Room.objects.all()
     serializer_class = RoomSerializer
+    permission_classes = [IsAdminOrReadOnly]
+    
 
 
-class RoomCreate(CreateAPIView):
+
+class RoomDetail(generics.RetrieveUpdateDestroyAPIView):
     queryset = Room.objects.all()
     serializer_class = RoomSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAdminOrReadOnly]
 
 
-class RoomImageView(RetrieveAPIView):
-    queryset = RoomImage.objects.all()
-    serializer_class = RoomImageSerializers
+class OccupiedDatesList(generics.ListCreateAPIView):
+    queryset = OccupiedDate.objects.all()
+    serializer_class = OccupiedDateSerializer
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    
+    def get_queryset(self):
+        user = self.request.user  
+        if not user.is_superuser and not user.is_staff:
+            return OccupiedDate.objects.filter(user=user)
+        return super().get_queryset()
+    
 
+class OccupiedDatesDetail(generics.RetrieveUpdateDestroyAPIView):
+    queryset = OccupiedDate.objects.all()
+    serializer_class = OccupiedDateSerializer
+    permission_classes = [IsAdminOrReadOnly]
 
-# ------------------ BOOKING APIs ------------------
-
-class OccupyListView(ListAPIView):
-    queryset = OccupyDate.objects.all()
-    serializer_class = OccupySerializers
-    permission_classes = [IsAuthenticated]
-
-class occupyRetriewView(RetrieveAPIView):
-    queryset = OccupyDate.objects.all()
-    serializer_class = OccupySerializers 
-# ------------------ USER APIs ------------------
-
-class UserListAPI(ListAPIView):
-    serializer_class = userSerializers
-    permission_classes = [IsAuthenticated]
+class UserList(generics.ListAPIView):
+    queryset = User.objects.all()
+    serializer_class = UserSerializer
 
     def get_queryset(self):
         user = self.request.user
-        if user.is_staff or user.is_superuser:
+        if user.is_staff or user.is_superuser:  # Admin users
             return User.objects.all()
-        return User.objects.filter(id=user.id)
+        else:  # Regular users
+            return User.objects.filter(id=user.id)
+    
 
-
-class UserDetail(RetrieveAPIView):
+class UserDetail(generics.RetrieveAPIView):
     queryset = User.objects.all()
-    serializer_class = userSerializers
-    permission_classes = [IsAuthenticated]
+    serializer_class = UserSerializer
 
     def get_object(self):
-        obj = super().get_object()
         user = self.request.user
+        obj = super().get_object()
 
+        # Allow access if the user is fetching their own details or is an admin
         if obj == user or user.is_staff or user.is_superuser:
             return obj
-        raise PermissionDenied("Not allowed")
-
-
-# ------------------ AUTH APIs ------------------
-
-class Register(CreateAPIView):
+        else:
+            raise permissions.PermissionDenied("You do not have permission to access this user's details.")
+    
+class Register(generics.CreateAPIView):
     queryset = User.objects.all()
-    serializer_class = userSerializers
+    serializer_class = UserSerializer
 
-    def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
+    def perform_create(self, serializer):
+        # Save the user
         user = serializer.save()
-        token = Token.objects.create(user=user)
 
-        return Response({
+        # Generate token
+        token, created = Token.objects.get_or_create(user=user)
+
+        # Return user data and token in response
+        self.response_data = {
             "user": {
                 "id": user.id,
+                "username": user.email,
                 "email": user.email,
-                "full_name": user.full_name
+                "full_name":user.full_name
             },
-            "token": token.key
-        })
+            "token": token.key,
+        }
 
-
+    def create(self, request, *args, **kwargs):
+        super().create(request, *args, **kwargs)
+        return Response(self.response_data)
+    
+        
+    
 class Login(APIView):
-    def post(self, request):
-        username = request.data.get("username")
-        password = request.data.get("password")
+    def post(self, request, *args, **kwargs):
+        # Extract username and password from the request data
+        username = request.data.get('username')
+        password = request.data.get('password')
 
+        # Authenticate the user
         user = authenticate(username=username, password=password)
 
         if user is None:
-            raise AuthenticationFailed("Invalid credentials")
+            # Raise an error if authentication fails
+            raise AuthenticationFailed('Invalid username or password')
 
-        token, _ = Token.objects.get_or_create(user=user)
+        # Generate or retrieve the token
+        token, created = Token.objects.get_or_create(user=user)
 
+        # Return the user info and token
         return Response({
             "user": {
                 "id": user.id,
+                "username": user.username,
                 "email": user.email,
-                "full_name": user.full_name
+                "full_name":user.full_name
             },
-            "token": token.key
+            "token": token.key,
         })
+    
+class TestToken(generics.RetrieveAPIView):
+    queryset = User.objects.all()
+    serializer_class = UserSerializer

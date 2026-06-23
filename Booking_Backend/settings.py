@@ -29,21 +29,25 @@ ALLOWED_HOSTS = []
 
 
 # Application definition
-
 INSTALLED_APPS = [
+    'cloudinary',
+    'cloudinary_storage',
+    "corsheaders",
+    'rest_framework',
+    'rest_framework.authtoken',
+    'Room_Booking',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    "rest_framework",
-    "Room_Booking",
-    
+
 ]
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'corsheaders.middleware.CorsMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -126,7 +130,7 @@ MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
 AUTH_USER_MODEL = 'Room_Booking.User'   # ✅
-AUTHENTICATION_BACKENDS = ["Room_Booking.Auth_backends.EmailBakend"]
+AUTHENTICATION_BACKENDS = ["Room_Booking.auth_backend.EmailBackend"]
 
 
 REST_FRAMEWORK = {
@@ -137,3 +141,55 @@ REST_FRAMEWORK = {
     ],
     
 }
+
+CSRF_TRUSTED_ORIGINS = [
+    'https://booking-app-backend-gqr0.onrender.com',
+    'https://booking-app-nine-ruby.vercel.app',
+]
+CORS_ALLOWED_ORIGINS = [
+    # "http://127.0.0.1:5173",
+    # "http://localhost:5173",
+    "https://booking-app-nine-ruby.vercel.app"
+]
+CORS_ALLOW_CREDENTIALS = True
+CORS_EXPOSE_HEADERS = [
+    "Content-Type",
+    "Authorization",
+]
+ROOT_URLCONF = 'Booking_Backend.urls'
+import os
+
+# For offline serving:
+# MEDIA_URL = '/media/'  # URL path for media files
+# MEDIA_ROOT = os.path.join(BASE_DIR, 'media')  # Directory to store media files
+
+import cloudinary
+import cloudinary.api
+import cloudinary.uploader
+
+# Cloudinary configuration
+cloudinary.config(
+    cloud_name="dxbm4jutk",
+    api_key="154477864673916",
+    api_secret="JepRjLTqD_kDGP6XN-jjYFjKK3U",
+    secure=True,
+)
+
+CLOUDINARY_STORAGE = {
+    'CLOUD_NAME': 'dxbm4jutk',
+    'API_KEY': '154477864673916',
+    'API_SECRET': 'JepRjLTqD_kDGP6XN-jjYFjKK3U',
+}
+
+DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
+
+
+
+# import dj_database_url
+# database_url = os.environ.get("DATABASE_URL")
+# DATABASES['default'] = dj_database_url.parse(database_url)
+
+
+# DEBUG = os.environ.get("DEBUG","False").lower() == "true"
+# ALLOWED_HOSTS = os.environ.get("ALLOWED_HOSTS").split(" ")
+# SECRET_KEY = os.environ.get("SECRET_KEY")
